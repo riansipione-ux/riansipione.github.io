@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Calculadora de ciclos do sono</title>
+<style>
+:root{--bg:#f5f6fa;--card:#fff;--text:#1b1f2a;--muted:#667085;--accent:#4f46e5;--accent-t:#fff;--line:#e3e6ee;--soft:#eef0ff;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1220;--card:#181c2e;--text:#eef0f8;--muted:#9aa3b8;--accent:#8b87ff;--accent-t:#10122a;--line:#2a3050;--soft:#232848}}
+:root[data-theme="dark"]{--bg:#0f1220;--card:#181c2e;--text:#eef0f8;--muted:#9aa3b8;--accent:#8b87ff;--accent-t:#10122a;--line:#2a3050;--soft:#232848}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;min-height:100vh;display:flex;justify-content:center;padding:20px 16px}
+main{width:100%;max-width:440px}
+h1{font-size:1.4rem;margin:8px 0 4px}
+p.sub{margin:0 0 18px;color:var(--muted);font-size:.92rem;line-height:1.4}
+.tabs{display:flex;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:4px;gap:4px}
+.tabs button{flex:1;border:0;background:transparent;color:var(--muted);padding:11px 6px;border-radius:10px;font:inherit;font-size:.9rem;font-weight:600;cursor:pointer}
+.tabs button.on{background:var(--accent);color:var(--accent-t)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px;margin-top:14px}
+label{display:block;font-size:.85rem;color:var(--muted);margin-bottom:6px}
+input[type=time]{width:100%;font:inherit;font-size:1.8rem;font-weight:700;text-align:center;padding:12px;border-radius:12px;border:1px solid var(--line);background:var(--bg);color:var(--text)}
+.now{margin-top:10px;width:100%;border:1px solid var(--line);background:var(--soft);color:var(--text);padding:10px;border-radius:10px;font:inherit;font-size:.88rem;cursor:pointer}
+.res{text-align:center}
+.res .lbl{color:var(--muted);font-size:.85rem}
+.res .big{font-size:3rem;font-weight:800;color:var(--accent);margin:4px 0;letter-spacing:-1px}
+.res .note{font-size:.82rem;color:var(--muted)}
+.steps{margin-top:14px;border-top:1px solid var(--line);padding-top:12px;font-size:.88rem;display:grid;gap:6px}
+.steps div{display:flex;justify-content:space-between}
+.steps span:last-child{font-weight:600}
+.alt{margin-top:14px}
+.alt h2{font-size:.85rem;color:var(--muted);margin:0 0 8px;font-weight:600}
+.chips{display:flex;gap:8px;flex-wrap:wrap}
+.chip{background:var(--soft);border-radius:10px;padding:8px 12px;font-size:.85rem}
+.chip b{display:block;font-size:1.05rem}
+.hidden{display:none}
+</style>
+</head>
+<body>
+<main>
+  <h1>😴 Ciclos do sono</h1>
+  <p class="sub">5 ciclos de 90 min + 15 min para pegar no sono = 7h45 do momento em que você deita até o despertador tocar.</p>
+
+  <div class="tabs">
+    <button id="tab-bed" class="on">Vou dormir às…</button>
+    <button id="tab-wake">Preciso acordar às…</button>
+  </div>
+
+  <div class="card">
+    <label id="inlabel" for="t">Horário em que vou deitar</label>
+    <input type="time" id="t" value="23:00">
+    <button class="now" id="now">Usar o horário atual</button>
+  </div>
+
+  <div class="card res">
+    <div class="lbl" id="reslabel">Programe o despertador para</div>
+    <div class="big" id="out">--:--</div>
+    <div class="note" id="daynote"></div>
+    <div class="steps" id="steps"></div>
+  </div>
+
+  <div class="card alt">
+    <h2 id="alttitle">Outras opções</h2>
+    <div class="chips" id="chips"></div>
+  </div>
+</main>
+
+<script>
+(function(){
+  var CICLO = 90, LATENCIA = 15, CICLOS = 5;
+  var mode = "bed";
+  var $ = function(id){ return document.getElementById(id); };
+
+  function pad(n){ return (n < 10 ? "0" : "") + n; }
+  function fmt(min){
+    var m = ((min % 1440) + 1440) % 1440;
+    return pad(Math.floor(m / 60)) + ":" + pad(m % 60);
+  }
+  function dur(min){
+    var h = Math.floor(min / 60), m = min % 60;
+    return h + "h" + (m ? pad(m) : "");
+  }
+  function parse(v){
+    if(!v) return null;
+    var p = v.split(":");
+    return parseInt(p[0], 10) * 60 + parseInt(p[1], 10);
+  }
+
+  function render(){
+    var base = parse($("t").value);
+    if(base === null){ $("out").textContent = "--:--"; return; }
+    var total = LATENCIA + CICLOS * CICLO;
+    var res, dayNote = "", steps = "";
+
+    if(mode === "bed"){
+      var wake = base + total;
+      res = wake;
+      if(wake >= 1440) dayNote = "no dia seguinte";
+      var sleepAt = base + LATENCIA;
+      steps = row("Deita", fmt(base)) + row("Pega no sono (+15 min)", fmt(sleepAt)) +
+              row("5 ciclos (" + dur(CICLOS * CICLO) + ")", "→ " + fmt(wake));
+    } else {
+      var bed = base - total;
+      res = bed;
+      if(bed < 0) dayNote = "na noite anterior";
+      var sleepAt2 = bed + LATENCIA;
+      steps = row("Deita", fmt(bed)) + row("Pega no sono (+15 min)", fmt(sleepAt2)) +
+              row("Acorda", fmt(base));
+    }
+
+    $("out").textContent = fmt(res);
+    $("daynote").textContent = dayNote;
+    $("steps").innerHTML = steps;
+
+    var chips = "";
+    [4, 5, 6].forEach(function(c){
+      var tt = LATENCIA + c * CICLO;
+      var h = mode === "bed" ? fmt(base + tt) : fmt(base - tt);
+      chips += '<div class="chip">' + c + ' ciclos<b>' + h + '</b>' + dur(c * CICLO) + ' de sono</div>';
+    });
+    $("chips").innerHTML = chips;
+  }
+
+  function row(a, b){ return "<div><span>" + a + "</span><span>" + b + "</span></div>"; }
+
+  function setMode(m){
+    mode = m;
+    $("tab-bed").className = m === "bed" ? "on" : "";
+    $("tab-wake").className = m === "wake" ? "on" : "";
+    if(m === "bed"){
+      $("inlabel").textContent = "Horário em que vou deitar";
+      $("reslabel").textContent = "Programe o despertador para";
+      $("alttitle").textContent = "Despertador com outros números de ciclos";
+      $("now").classList.remove("hidden");
+      $("t").value = "23:00";
+    } else {
+      $("inlabel").textContent = "Horário em que preciso acordar";
+      $("reslabel").textContent = "Você deve deitar às";
+      $("alttitle").textContent = "Horário de deitar com outros números de ciclos";
+      $("now").classList.add("hidden");
+      $("t").value = "06:30";
+    }
+    render();
+  }
+
+  $("tab-bed").onclick = function(){ setMode("bed"); };
+  $("tab-wake").onclick = function(){ setMode("wake"); };
+  $("t").oninput = render;
+  $("now").onclick = function(){
+    var d = new Date();
+    $("t").value = pad(d.getHours()) + ":" + pad(d.getMinutes());
+    render();
+  };
+  render();
+})();
+</script>
+</body>
+</html>
